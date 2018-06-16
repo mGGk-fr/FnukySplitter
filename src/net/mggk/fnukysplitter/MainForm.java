@@ -1,5 +1,7 @@
 package net.mggk.fnukysplitter;
 
+import com.alemcode.HexEditor.HexEditor;
+
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -244,7 +246,18 @@ public class MainForm {
     }
 
     public boolean spoofingNCA(){
-
+        //NPDM File
+        String finalPath = System.getProperty("user.dir").concat("\\tools\\final\\exefs\\main.npdm");
+        //HexEditor class
+        HexEditor he;
+        try {
+            //Opening editor
+            he = new HexEditor(finalPath);
+            //Replacing Title ID
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
         return true;
     }
 
