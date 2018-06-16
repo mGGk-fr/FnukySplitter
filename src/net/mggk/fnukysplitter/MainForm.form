@@ -74,7 +74,7 @@
           <text value="Start Splitter"/>
         </properties>
       </component>
-      <scrollpane id="c8b94">
+      <scrollpane id="c8b94" binding="jspLogs">
         <constraints>
           <grid row="4" column="0" row-span="1" col-span="3" vsize-policy="7" hsize-policy="7" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
         </constraints>

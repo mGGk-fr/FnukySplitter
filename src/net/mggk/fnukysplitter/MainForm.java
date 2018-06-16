@@ -1,13 +1,23 @@
 package net.mggk.fnukysplitter;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+
+import static java.nio.file.StandardCopyOption.*;
 
 public class MainForm {
 
@@ -21,6 +31,7 @@ public class MainForm {
     private JLabel lblSpoof;
     private JTextField tfSpoof;
     private JTextArea taLogs;
+    private JScrollPane jspLogs;
 
     //App entry point
     public static void main(String[] args){
@@ -83,48 +94,161 @@ public class MainForm {
                 extractXCI();
             }
         });
+
+        //Adding listener to the textArea to autoscroll logs
+        taLogs.getDocument().addDocumentListener(new DocumentListener() {
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+
+            }
+
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                taLogs.setCaretPosition(taLogs.getDocument().getLength());
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent arg0) {
+
+            }
+        });
     }
 
     public void extractXCI(){
         SwingWorker sw = new SwingWorker(){
             protected Object doInBackground() throws Exception {
-                //Getting file info
-                File xciFile = new File(tfFileDir.getText());
                 //If you're getting here, well everything is ready for splitting, we're settings tool directory
-                String toolPath = System.getProperty("user.dir").concat("\\tools");
-                //Generating first hactool command to extract game
-                ProcessBuilder hacTool = new ProcessBuilder(
-                        "cmd.exe", "/c", "cd \""+toolPath+"\" && hactool.exe -k \""+toolPath+"\\keys.txt\" -t xci \""+xciFile.getAbsolutePath()+"\" --outdir=\""+toolPath+"\\out\"");
-                hacTool.redirectErrorStream(true);
-                //Creating process and execute it
-                Process p = null;
-                try {
-                    p = hacTool.start();
-                } catch (IOException e1) {
-                    e1.printStackTrace();
+                //Extracting XCI
+                appendToLog("-> EXTRACTING XCI");
+                if(!executeHacToolCommad("-t xci \"#XCIFILE#\" --outdir=\"#TOOLPATH#\\out\"")){
+                    JOptionPane.showMessageDialog(null, "Oups... An error occured, please check the logs");
+                    return null;
                 }
-                //Reading output and put this in the log textarea
-                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                String line = null;
-                while (true) {
-                    try {
-                        line = r.readLine();
-                    } catch (IOException e1) {
-                        e1.printStackTrace();
-                    }
-                    if (line == null) { break; }
-                    taLogs.append(line.concat(System.getProperty("line.separator")));
+                //Getting main NCA file
+                appendToLog("-> PREPARING NCA");
+                if(!definingMainNCAFile()){
+                    JOptionPane.showMessageDialog(null, "Oups... An error occured, please check the logs");
+                    return null;
                 }
+                //Extracting romfs.bin and exeFS
+                appendToLog("-> EXTRACTING NCA");
+                if(!executeHacToolCommad("\"#FINALPATH#\\main.nca\" --romfs=\"#FINALPATH#\\romfs.bin\" --exefsdir=\"#FINALPATH#\\exefs\"")){
+                    JOptionPane.showMessageDialog(null, "Oups... An error occured, please check the logs");
+                    return null;
+                }
+                //Spoofing game
+                appendToLog("-> SPOOFING NPDM");
+
+                JOptionPane.showMessageDialog(null, "Game Ready :D");
                 return null;
             }
             public void done(){
                 if(SwingUtilities.isEventDispatchThread()){
                     btnStartSplitter.setEnabled(true);
-                    JOptionPane.showMessageDialog(null, "Game Ready :D");
+
                 }
 
             }
         };
         sw.execute();
+    }
+
+    public boolean executeHacToolCommad(String cmd){
+        //Getting file info
+        String xciFile = tfFileDir.getText();
+        //Getting tools directory
+        String toolPath = System.getProperty("user.dir").concat("\\tools");
+        //Settings final directory
+        String finalPath = System.getProperty("user.dir").concat("\\tools\\final");
+        //Replace tags
+        cmd = cmd.replace("#XCIFILE#",xciFile);
+        cmd = cmd.replace("#TOOLPATH#", toolPath);
+        cmd = cmd.replace("#FINALPATH#", finalPath);
+        //Generating first hactool command to extract game
+        ProcessBuilder hacTool = new ProcessBuilder(
+                "cmd.exe", "/c", "cd \""+toolPath+"\" && hactool.exe -k \""+toolPath+"\\keys.txt\" ".concat(cmd));
+        hacTool.redirectErrorStream(true);
+        //Creating process and execute it
+        Process p = null;
+        try {
+            p = hacTool.start();
+        } catch (IOException e1) {
+            e1.printStackTrace();
+            return false;
+        }
+        //Reading output and put this in the log textarea
+        BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+        String line = null;
+        while (true) {
+            try {
+                line = r.readLine();
+            } catch (IOException e1) {
+                return false;
+            }
+            if (line == null) { break; }
+            appendToLog(line);
+        }
+        //Extracting
+        return true;
+    }
+
+
+    public boolean definingMainNCAFile(){
+        //Settings output directory
+        String outPath = System.getProperty("user.dir").concat("\\tools\\out\\secure");
+        String finalPath = System.getProperty("user.dir").concat("\\tools\\final");
+        //Check if final path exists
+        if(!Files.exists(Paths.get(finalPath))){
+            try {
+                Files.createDirectory(Paths.get(finalPath));
+            } catch (IOException e) {
+                e.printStackTrace();
+                return false;
+            }
+        }
+        String fileName = null;
+        Long largestFileSize = 0L;
+        File searchDir = new File(outPath);
+        //taLogs.append("Searching biggest NCA File".concat(System.getProperty("line.separator")));
+        //Reading all files
+        for (File aFile : searchDir.listFiles())
+        {
+            if (largestFileSize < aFile.length())
+            {
+                largestFileSize = aFile.length();
+                fileName = aFile.getAbsolutePath();
+            }
+        }
+        if(fileName == null){
+            appendToLog("No NCA File Found");
+            return false;
+        }
+        appendToLog("Biggest NCA File Found, starting copy");
+        Path source = Paths.get(fileName);
+        Path dest = Paths.get(finalPath.concat("\\main.nca"));
+        try {
+            //Let's move the file
+            Files.move(source,dest,StandardCopyOption.REPLACE_EXISTING);
+            //Checking if file exists
+            if(!dest.toFile().exists()){
+                appendToLog("Error while moving NCA");
+                return false;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+        appendToLog("File Moved !");
+        return true;
+    }
+
+    public boolean spoofingNCA(){
+
+        return true;
+    }
+
+    public void appendToLog(String text){
+        taLogs.append(text.concat(System.getProperty("line.separator")));
     }
 }
